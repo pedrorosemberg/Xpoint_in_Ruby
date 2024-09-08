@@ -1,4 +1,4 @@
-# Xpoint - Protótipo em Ruby Atualizado
+# Xpoint - Protótipo em Ruby Atualizado e Corrigido
 
 require 'sqlite3'
 require 'date'
@@ -6,8 +6,9 @@ require 'gruff'
 
 # Configuração do banco de dados
 DB = SQLite3::Database.new 'xpoint.db'
+DB.results_as_hash = true
 
-# Criação das tabelas (mantido como estava)
+# Criação das tabelas
 DB.execute <<-SQL
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY,
@@ -42,6 +43,7 @@ class Project
   def self.create(name, weekly_hours, work_days, tags = nil)
     DB.execute("INSERT INTO projects (name, weekly_hours, work_days, tags) VALUES (?, ?, ?, ?)",
                [name, weekly_hours, work_days.join(','), tags])
+    DB.last_insert_row_id
   end
 
   def self.all
@@ -56,8 +58,8 @@ class Project
     project = find(id)
     return 0 if project.nil?
 
-    weekly_hours = project[2]
-    work_days = project[3].split(',').count
+    weekly_hours = project['weekly_hours']
+    work_days = project['work_days'].split(',').count
     daily_hours = (weekly_hours.to_f / work_days).ceil
     daily_hours
   end
@@ -77,12 +79,13 @@ class TimeEntry
   def self.create(project_id, date, start_time, end_time = nil, is_pause = false)
     DB.execute("INSERT INTO time_entries (project_id, date, start_time, end_time, is_pause) VALUES (?, ?, ?, ?, ?)",
                [project_id, date, start_time, end_time, is_pause ? 1 : 0])
+    DB.last_insert_row_id
   end
 
   def self.update(id, end_time)
     old_entry = DB.execute("SELECT * FROM time_entries WHERE id = ?", [id]).first
     DB.execute("UPDATE time_entries SET end_time = ? WHERE id = ?", [end_time, id])
-    record_edit(id, 'end_time', old_entry[4], end_time)
+    record_edit(id, 'end_time', old_entry['end_time'], end_time)
   end
 
   def self.for_project(project_id, start_date, end_date = nil)
@@ -118,11 +121,11 @@ class Report
     pause_time = 0
 
     entries.each do |entry|
-      start_time = Time.parse(entry[3])
-      end_time = entry[4] ? Time.parse(entry[4]) : Time.now
+      start_time = Time.parse(entry['start_time'])
+      end_time = entry['end_time'] ? Time.parse(entry['end_time']) : Time.now
       duration = (end_time - start_time) / 3600.0 # Convert to hours
 
-      if entry[5] == 1 # is_pause
+      if entry['is_pause'] == 1
         pause_time += duration
       else
         total_time += duration
@@ -263,12 +266,12 @@ class Report
 end
 
 # Exemplo de uso
-# Project.create('Projeto A', 40, ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], 'tag1,tag2')
-# TimeEntry.create(1, '2024-03-08', '09:00', '12:00')
-# TimeEntry.create(1, '2024-03-08', '12:00', '13:00', true) # Pausa para almoço
-# TimeEntry.create(1, '2024-03-08', '13:00', '18:00')
-# puts Report.daily_summary(1, '2024-03-08')
-# Report.generate_daily_chart(1, '2024-03-08')
+# project_id = Project.create('Projeto A', 40, ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], 'tag1,tag2')
+# TimeEntry.create(project_id, '2024-03-08', '09:00', '12:00')
+# TimeEntry.create(project_id, '2024-03-08', '12:00', '13:00', true) # Pausa para almoço
+# TimeEntry.create(project_id, '2024-03-08', '13:00', '18:00')
+# puts Report.daily_summary(project_id, '2024-03-08')
+# Report.generate_daily_chart(project_id, '2024-03-08')
 
 # Para ver as referências de entrada:
 # Project.input_reference
